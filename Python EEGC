@@ -1,1 +1,263 @@
+"""
+Banco Central de Venezuela
+Gerencia de Sistemas e Informatica
+Coordinacion Funcional de Estudios
+Proyecto: Migracion a Python de Grandes Cadenas (Nielsen)
+Alias:EEGC 
+Prograna: Principal (Job_EEGC)
+Created on Mon Feb  1 08:24:55 2021
+@author: vpiccini
+"""
 
+################################################################################
+#Clear Console and Variables (Solo para correr en Spider) 
+from IPython import get_ipython
+get_ipython().magic('clear')
+get_ipython().magic('reset -f')
+
+################################################################################
+#Librerias;
+#Panda SQL;
+import pandas as pd
+#Numpy
+import numpy as np
+#Comandos del Sistema
+import sys
+#Object Conection-
+import Obj_Conect as Con
+#Object Log Name
+import Obj_Log_Name as Oln
+
+################################################################################
+#Generando nombre del archivo de Log
+#Oln.Log_Name('D:\Datos\Python_Job_EEGC','Y')
+
+################################################################################
+#Definicion de variables 
+global conect,Fe_MM0,Fe_MM1,Fe_AA0,Fe_IniN0,Fe_FinN0,Fe_IniN1,Fe_FinN1,Fe_Hoy
+
+################################################################################
+#Leer los Paramtros de Power Builder
+if(len(sys.argv)>2):
+	#Workstation Identification -PR-
+	WsI = sys.argv[1]
+	#Workstation User Loged
+	WsU = sys.argv[2]
+	#DB User Name
+	UId = sys.argv[3]
+	#DB PassWord
+	Pwd = sys.argv[4]
+	#Data Base DSN
+	Dsn = sys.argv[5]
+	#Mes de Referencia
+	Fe_MM0=sys.argv[6]
+	#Año de Referencia
+	Fe_AA0=sys.argv[7]
+	#Ruta de los SubJobs
+	Par_Rut=str(sys.argv[8])
+else:
+ 	print("Error en la lectura del arrelgo de Paramtros de PowerBuilder")
+ 	sys.exit()
+
+################################################################################
+#Paramtros para correr local Python
+#Workstation Identification -PR-
+WsI='PR400404W7'
+#Workstation User Loged
+WsU='vpiccini'
+#DB User Name
+UId='vpiccin'
+#DB PassWord
+Pwd='feb2021'
+#Data Base DSN
+Dsn='DB2D64'
+#Mes de Referencia
+Fe_MM0 = 11
+#Año de Referencia
+Fe_AA0 = 2020
+#Ruta SubJob
+Par_Rut='D:\Datos\Proyectos 2021\EEGC\Python'
+
+################################################################################
+#Log Header
+################################################################################
+print('#########################################################################')
+print('Banco Central de Venezuela')
+print('Gerencia de Sistemas e Informatica')
+print('Coordinacion Funcional de Estudios')
+print('Programa Python: Grandes Cadenas')
+print('#########################################################################')
+print('Workstation Identification:'+WsI)
+print('Workstation User:'+WsU)
+print('Data Base User:'+UId)
+print('Data Base Dsn:'+Dsn)
+print('#########################################################################')
+from datetime import datetime
+today = datetime.now().strftime("%Y-%m-%d %H:%M.%S")
+Fe_Ini='DateTime Star Program '+ str(today)
+print(Fe_Ini) 
+print('#########################################################################')
+
+################################################################################
+#Calculando Current Date
+from datetime import date
+Fe_Hoy = date.today()
+
+################################################################################
+#Calculando las Fechas de Referencia para el procesamiento de los datos
+#Mes Actual
+#Fecha inicial del mes actual 
+import datetime
+from dateutil import relativedelta
+Fe_IniN0=datetime.date(Fe_AA0,Fe_MM0,1)
+#Fecha Fin del mes Actual
+Fe_FinN0 = Fe_IniN0 + relativedelta.relativedelta(months=0,day=32)
+#Mes Anterior
+#Fecha Inicio del mes Anterior
+Fe_IniN1= Fe_IniN0 + relativedelta.relativedelta(months=-1,day=1)
+#Fecha Fin del mes Anterior
+Fe_FinN1= Fe_IniN0 + relativedelta.relativedelta(months=-1,day=32)
+#Mes 
+Fe_MM1=Fe_IniN1.month
+
+################################################################################
+#Ejecutando Objeto de Conexion
+conect=Con.connect(Dsn,UId,Pwd)
+
+################################################################################
+#Leer Data de T0
+Temp001=Fun_GetPre(Fe_MM0,Fe_AA0,Fe_MM0,Fe_IniN0,Fe_FinN0)
+#Validando que Data de T0 no sea vacio 
+DF_Empty(WsU,Temp001,'Precios en T0',Fe_AA0,Fe_MM0)	  
+#Leer Data de T1
+Temp002=Fun_GetPre(Fe_MM0,Fe_AA0,Fe_MM1,Fe_IniN1,Fe_FinN1)
+DF_Empty(WsU,Temp002,'Precios en T1',Fe_AA0,Fe_MM0)	
+
+################################################################################
+#Incorporando los codigos de Codigo IPR y Cpv
+
+
+
+
+
+################################################################################
+#Caclulando la MG de Precios y Sumatoria Montos
+#Nivel de Mes y Año para T0
+Temp003=Fun_MGySum(Temp001,'MO_PRECIO00',['FE_MM','FE_AA'],'Geo','GeMPre0')
+Temp004=Fun_MGySum(Temp001,'MO_VENTA00',['FE_MM','FE_AA'],'Sum','SumVen0')
+#Join de los DF
+Temp005=Fun_JoinDF(Temp003,Temp004,'inner',['FE_MM','FE_AA'])
+#Nivel de Mes y Año para T1
+Temp003=Fun_MGySum(Temp002,'MO_PRECIO00',['FE_MM','FE_AA'],'Geo','GeMPre1')
+Temp004=Fun_MGySum(Temp002,'MO_VENTA00',['FE_MM','FE_AA'],'Sum','SumVen1')
+#Join de los DF
+Temp006=Fun_JoinDF(Temp003,Temp004,'inner',['FE_MM','FE_AA'])
+#Join T0 y T1
+Temp007=Fun_JoinDF(Temp005,Temp006,'inner',['FE_MM','FE_AA'])
+
+################################################################################
+#Sustituyendo Nan por cero (0) en los campos de referencia
+values={'GeMPre0':0,'GeMPre1':0,'SumVen0':0,'SumVen0':0}
+Temp007=Temp007.fillna(value=values)
+
+#Calculando las Variacione de Precios
+conditions001 =[(Temp007['GeMPre0']==0) & (Temp007['GeMPre1']==0),
+                (Temp007['GeMPre0']!=0) & (Temp007['GeMPre1']==0),
+                (Temp007['GeMPre0']==0) & (Temp007['GeMPre1']!=0),
+                (Temp007['GeMPre0']!=0) & (Temp007['GeMPre1']!=0)]
+choices001=[0,0,0,Temp007['GeMPre0']/Temp007['GeMPre1']]
+Temp007['Rel_GMP']=np.select(conditions001,choices001,default=0)
+#Calculando las Variacione de Ventas
+conditions002 =[(Temp007['SumVen0']==0) & (Temp007['SumVen1']==0),
+                (Temp007['SumVen0']!=0) & (Temp007['SumVen1']==0),
+                (Temp007['SumVen0']==0) & (Temp007['SumVen1']!=0),
+                (Temp007['SumVen0']!=0) & (Temp007['SumVen1']!=0)]
+choices002=[0,0,0,Temp007['SumVen0']/Temp007['SumVen1']]
+Temp007['Rel_SuV']=np.select(conditions002,choices002,default=0)
+
+
+
+
+
+
+
+################################################################################
+#Delete 
+try:
+	if len(TempA01) >0:
+		sqlConnection = conect
+		cursor = sqlConnection.cursor()
+		#Deleting
+		sql_delete_query = '''Delete from EEGC.  
+	                        where AA_ANO='''+str(Fe_AA0)+''' and  
+	                              MM_MES ='''+str(Fe_MM0)+''' '''
+		cursor.execute(sql_delete_query)
+		sqlConnection.commit()
+		cursor.close()
+		del cursor
+		print('Job_EEGC, Proceso Delete termino sin errores' )
+except () as e:
+	Obj_Email(WsU,"Delete ",Fe_AA0,Fe_MM0,0,e)
+	sys.exit(0)
+
+################################################################################
+#Insert  	
+	if len(TempA01) > 0 :
+		for i, row in TempA01.iterrows(): 
+			cursor = conect.cursor()
+			sql ='''INSERT INTO EEGC.AGREGADOS(AA_ANO,MM_MES,CO_AGRUP_GEO,FE_DESDE_AG,CO_PANEL,CO_AGRUPACION,CO_TIPO_EST,
+	               CO_ESTAB,NU_SUCURSAL,NU_VERSION_EPF,CO_CANASTA,CO_GRUPO,CO_SUB_GRUPO,CO_CLASE,CO_SUB_CLASE,CO_RUBRO,
+	               CO_CUARTIL,NU_INDICE,NU_INDICE_MOD,NU_RELATIVO,NU_POND,NU_POND_NUEVA,ST_CALCULO,CO_MONEDA,CO_UNIDAD_MEDIDA) 
+	              values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'''
+			cursor.execute(sql,(row['AA_ANO'],row['MM_MES'],row['CO_AGRUP_GEO'],row['FE_DESDE_AG'],row['CO_PANEL'],row['CO_AGRUPACION'],
+									row['CO_TIPO_EST'],row['CO_ESTAB'],row['NU_SUCURSAL'],row['NU_VERSION_EPF'],row['CO_CANASTA'],
+									row['CO_GRUPO'],row['CO_SUB_GRUPO'],row['CO_CLASE'],row['CO_SUB_CLASE'],row['CO_RUBRO'],row['CO_CUARTIL'],
+									row['NU_INDICE'],row['NU_INDICE_MOD'],row['NU_RELATIVO'],row['NU_POND'],row['NU_POND_NUEVA'],
+									row['ST_CALCULO'],row['CO_MONEDA'],row['CO_UNIDAD_MEDIDA']))
+			conect.commit()
+			cursor.close()
+			del cursor
+	print('EEGC Insert  termino sin errores' )
+except () as e:
+	Obj_Email(WsU,"Insert ",Fe_AA0,Fe_MM0,0,e)
+	sys.exit(0)
+
+
+
+
+
+
+
+
+
+
+
+################################################################################
+#Gestion de correo(Fin de Programa sin errores)
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+server = smtplib.SMTP('mail.intra.bcv',25)
+SendTo=str(WsU)+'@bcv.org.ve'
+TextBody="Proceso Job_EEGC bajo los parametros :Año="+str(Fe_AA0)+" Mes="+str(Fe_MM0)+" termino sin errroes."
+msg = MIMEMultipart()
+#Send the mail
+msg['From'] = "userbi@bcv.org.ve"
+msg['To'] = SendTo
+msg['Subject'] = "Job_EEIN temino sin errores"
+#Add body to email
+body = TextBody
+msg.attach(MIMEText(body, "plain"))
+server.sendmail(msg['From'], msg['To'], msg.as_string())		
+
+################################################################################
+#Fin de Programa
+################################################################################
+conect.close()
+from datetime import datetime
+today = datetime.now().strftime("%Y-%m-%d %H:%M.%S")
+Fe_Fin='DateTime End Program '+ str(today)
+print('#########################################################################')
+print(Fe_Fin) 	
+print('#########################################################################')
+sys.exit(0)
